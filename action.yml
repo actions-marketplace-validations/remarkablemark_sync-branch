@@ -24,7 +24,7 @@ runs:
   using: composite
   steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.1.1
 
     - name: Get pull request inputs
       id: inputs
