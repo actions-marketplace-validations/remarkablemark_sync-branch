@@ -10,12 +10,16 @@ inputs:
     description: Head branch (e.g., master)
     default: ${{ github.event.repository.default_branch }}
   merge:
-    description: Merge method (merge, squash, rebase, admin)
+    description: Merge method (merge, squash, rebase)
     default: merge
   title:
     description: Pull request title
   body:
     description: Pull request body
+  delete-branch:
+    description: Delete the local and remote branch after merge
+  admin:
+    description: Use administrator privileges to merge a pull request that does not meet requirements
   token:
     description: GitHub token
     default: ${{ github.token }}
@@ -24,29 +28,7 @@ runs:
   using: composite
   steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Get pull request inputs
-      id: inputs
-      shell: bash
-      run: |
-        PULL_REQUEST_TITLE=${{ toJSON(inputs.title) }}
-        if [ "$PULL_REQUEST_TITLE" == '' ]; then
-          PULL_REQUEST_TITLE=$(cat <<EOF
-        chore(sync-branch): merge ${{ inputs.head }} to ${{ inputs.base }}
-        EOF
-        )
-        fi
-        echo "PULL_REQUEST_TITLE=$PULL_REQUEST_TITLE" >> $GITHUB_OUTPUT
-
-        PULL_REQUEST_BODY=${{ toJSON(inputs.body) }}
-        if [ "$PULL_REQUEST_BODY" == '' ]; then
-          PULL_REQUEST_BODY=$(cat <<EOF
-        🤖 [sync-branch](https://github.com/remarkablemark/sync-branch): merging __${{ inputs.head }}__ to __${{ inputs.base }}__
-        EOF
-        )
-        fi
-        echo "PULL_REQUEST_BODY=$PULL_REQUEST_BODY" >> $GITHUB_OUTPUT
+      uses: actions/checkout@v6
 
     - name: Create pull request
       id: pull_request
@@ -55,14 +37,18 @@ runs:
       run: |
         PULL_REQUEST_URL=$(
           gh pr create \
-            --base ${{ inputs.base }} \
-            --head ${{ inputs.head }} \
-            --title ${{ toJSON(steps.inputs.outputs.PULL_REQUEST_TITLE) }} \
-            --body ${{ toJSON(steps.inputs.outputs.PULL_REQUEST_BODY) }}
+            --base ${{ toJSON(inputs.base) }} \
+            --head ${{ toJSON(inputs.head) }} \
+            --title "$PULL_REQUEST_TITLE" \
+            --body "$PULL_REQUEST_BODY"
         )
         echo "PULL_REQUEST_URL=$PULL_REQUEST_URL" >> $GITHUB_OUTPUT
       env:
         GH_TOKEN: ${{ inputs.token }}
+        PULL_REQUEST_TITLE: >-
+          ${{ inputs.title || format('chore(sync-branch): merge `{0}` to `{1}`', inputs.head, inputs.base) }}
+        PULL_REQUEST_BODY: >-
+          ${{ inputs.body || format('🤖 [sync-branch](https://github.com/remarkablemark/sync-branch): merging `{0}` to `{1}`', inputs.head, inputs.base) }}
 
     - name: Merge pull request
       if: ${{ steps.pull_request.outputs.PULL_REQUEST_URL }}
@@ -70,7 +56,8 @@ runs:
       run: >
         gh pr merge ${{ steps.pull_request.outputs.PULL_REQUEST_URL }}
         ${{ format('--{0}', inputs.merge) }}
-        ${{ inputs.admin != 'true' && '--auto' }}
+        ${{ inputs.admin == 'true' && '--admin' || '' }}
+        ${{ inputs.delete-branch == 'true' && '--delete-branch' || '' }}
       env:
         GH_TOKEN: ${{ inputs.token }}
 
